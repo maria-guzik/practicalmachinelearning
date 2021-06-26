@@ -1,0 +1,183 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Maria Guzik"
+date: "26/06/2021"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+# Main
+
+## Approach:
+The outcome variable (classe) has 5 levels:A-E and describes the way in which participants performed Unilateral Dumbbell Biceps Curl.
+A-exactly according to the specification 
+B-throwing the elbows to the front
+C-lifting the dumbbell only halfway
+D-lowering the dumbbell only halfway
+E-throwing the hips to the front
+
+I will create models to predict the class outcome, specifically decision tree and random forest. 
+
+## Cross-validation
+The training data will be subsampled into training set (75%) and validation set (25%). Models will be trained on the new training set and tested for accuracy on the new testing set (validation set). The more accurate model will be used on the original testing set.
+
+## Expected out-of-sample error
+Using the model on the validation set will result in some misclassification. Calculating 1-Accuracy (or number of misclassifications/total observations) will be used to get the error. 
+
+## Code:
+
+```{r, echo=FALSE}
+#Loading packages
+library(caret)
+library(rpart)
+library(tidyverse)
+```
+```{r, echo=FALSE}
+#Loading data
+train_data <- read_csv('pml-training.csv')
+test_data <- read_csv('pml-testing.csv')
+```
+
+
+```{r}
+#Looking at the data
+head(train_data)
+dim(train_data)
+```
+
+### Cleaning data
+
+First, I checked which variables have a lot of missing data
+```{r}
+colSums(is.na(train_data))/nrow(train_data)
+
+```
+
+Variables are either complete (0.00) or mostly missing (0.9793089).
+
+Then I removed the variables with over 90% of missing data.
+
+```{r}
+data_clea<-train_data[!colSums(is.na(train_data))/nrow(train_data) > .9]
+data_clea
+```
+
+```{r}
+head(data_clea)
+```
+
+This reduced the amount of variables from 160 to 60.
+Then I removed the variables that had no effect on the outcome (X1, user_name, timestamps and window information)
+
+```{r}
+clean_data <- data_clea[,-c(1:7)]
+head(clean_data)
+
+```
+
+## Cross-validation
+
+I split the clean data into the training and testing sets. I selected a seed.
+
+
+```{r}
+set.seed(616)
+inTrain = createDataPartition(clean_data$classe, p = 3/4)[[1]]
+training = clean_data[inTrain,]
+testing = clean_data[-inTrain,]
+```
+
+## Decision tree
+
+I created a decision tree as my first model, where outcome class was dependent on the remaining variables. 
+
+```{r}
+treemodel<-rpart(classe~., data=training, method='class')
+
+```
+
+I then visualised my tree with the rattle package. 
+
+```{r}
+library(rattle)
+
+fancyRpartPlot(treemodel)
+```
+
+## Model testing
+
+```{r}
+treepred<-predict(treemodel, testing, type='class')
+
+```
+
+```{r eval=FALSE, include=FALSE}
+testing$classe
+```
+
+I created a confusion matrix comparing predicted classes to actual classes in the validation dataset.
+
+```{r}
+confusionMatrix(treepred, as.factor(testing$classe))
+```
+
+## Analysis and error
+
+The model had an Accuracy of 0.7276 and out of sample error of 1-0.7276=0.2724 or 27%, which is quite high. The 95% Confidence Interval was 0.7149, 0.74
+
+I decided to create a more complicated random forest model.
+
+## Random forest
+```{r, cache=TRUE}
+rfmodel <- train(classe~., data=training, method='rf')
+
+```
+
+```{r}
+rfpred <-predict(rfmodel, testing)
+
+```
+
+## Testing the model
+```{r}
+confusionMatrix(rfpred, as.factor(testing$classe))
+```
+
+```{r}
+varImp(rfmodel)
+```
+
+```{r}
+rfmodel$finalModel
+```
+
+The random trees model had a much higher accuracy-0.9945 with 95% CI (0.992, 0.9964). The estimated out of sample error was 0.54%. Random forest performed much better than the decision tree model, but took much longer to compute. 
+
+## test data
+The more accurate random forest was applied to the original test data to predict the class.
+```{r include=FALSE}
+submissiontest<- predict(rfmodel, test_data)
+submissiontest
+```
+
